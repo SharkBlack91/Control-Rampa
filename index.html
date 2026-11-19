@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1f3b73">
+<title>Control de Rampa</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{--bg:#f2f4f7;--card:#fff;--ink:#14213d;--mut:#5b6475;--pri:#1f3b73;--ok:#1b7f3b;--bad:#c62828;--warn:#b26a00;--line:#d9dee7}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--pri);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:12px 16px;padding-top:calc(12px + env(safe-area-inset-top,0px))}
+header b{font-size:18px}
+.pill{font-size:13px;font-weight:600;padding:5px 10px;border-radius:99px;background:rgba(255,255,255,.18);white-space:nowrap}
+main{padding:12px 12px 92px;max-width:640px;margin:0 auto}
+nav{position:fixed;bottom:0;left:0;right:0;z-index:5;display:flex;background:#fff;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
+nav button{flex:1;border:0;background:none;padding:15px 4px;font-size:15px;color:var(--mut);font-weight:700}
+nav button.on{color:var(--pri);box-shadow:inset 0 3px 0 var(--pri)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin:0 0 12px}
+h2{font-size:18px;margin:4px 0 10px}
+h3{font-size:16px;margin:16px 0 8px}
+label.f{display:block;font-size:13px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.02em;margin:12px 0 4px}
+input,select,textarea{width:100%;font:inherit;font-size:17px;padding:12px;border:1px solid #b9c1cf;border-radius:10px;background:#fff;color:var(--ink)}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--pri);outline-offset:0}
+.btn{display:block;width:100%;border:0;border-radius:10px;padding:15px;font:inherit;font-size:17px;font-weight:700;background:var(--pri);color:#fff;text-align:center;cursor:pointer}
+.btn.sec{background:#e6ebf3;color:var(--pri)}
+.btn.ok{background:var(--ok)}
+.btn:disabled{opacity:.6}
+.seg{display:flex;gap:8px}
+.seg>button{flex:1;padding:13px 6px;border-radius:10px;border:2px solid var(--line);background:#fff;font:inherit;font-size:16px;font-weight:700;color:var(--ink)}
+.seg>button.on{border-color:var(--pri);background:#e8eefb;color:var(--pri)}
+.seg>button.okon{border-color:var(--ok);background:#e5f4ea;color:var(--ok)}
+.seg>button.badon{border-color:var(--bad);background:#fdeaea;color:var(--bad)}
+.two{display:flex;gap:10px}.two>div{flex:1;min-width:0}
+.item{border-top:1px solid var(--line);padding:12px 0}
+.item .t{font-weight:700;margin-bottom:8px}
+.item.falta{background:#fff6e5}
+.foto{margin-top:10px}
+.foto input[type=file]{display:none}
+.thumb{max-width:140px;border-radius:8px;display:block;margin-top:8px;border:1px solid var(--line)}
+.chip{display:inline-block;font-size:13px;padding:3px 9px;border-radius:99px;background:#fdeaea;color:var(--bad);margin:4px 4px 0 0;font-weight:700}
+.chip.ok{background:#e5f4ea;color:var(--ok)}
+.chip.gr{background:#eef1f6;color:var(--mut)}
+.row{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.mut{color:var(--mut);font-size:14px}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px}
+.kpi span{display:block;font-size:12px;font-weight:700;color:var(--mut);text-transform:uppercase}
+.kpi b{display:block;font-size:26px;margin-top:2px}
+.kpi.bad b{color:var(--bad)}
+.bar{height:10px;background:#eef1f6;border-radius:5px;overflow:hidden;margin:4px 0 10px}
+.bar i{display:block;height:100%;background:var(--bad)}
+.nav2{display:flex;align-items:center;gap:8px;margin:12px 0}
+.nav2 b{flex:1;text-align:center}
+.nb{width:48px;height:44px;border-radius:10px;border:1px solid var(--line);background:#fff;font-size:22px;color:var(--pri)}
+.maq{cursor:pointer}
+.det{border-top:1px solid var(--line);margin-top:10px;padding-top:8px;font-size:14px}
+.det>div{padding:8px 0;border-bottom:1px dashed var(--line)}
+.det a{color:var(--pri);font-weight:700}
+.aviso{background:#fff6e5;border:1px solid #f0d199;color:#7a4a00;border-radius:10px;padding:10px 12px;font-size:14px;margin-bottom:10px}
+.err{color:var(--bad);font-weight:700;margin-top:8px}
+#toast{position:fixed;left:12px;right:12px;bottom:80px;background:#14213d;color:#fff;padding:13px 14px;border-radius:10px;z-index:9;font-weight:600;text-align:center}
+</style>
+</head>
+<body>
+<header><b>Control de Rampa</b><span id="sync" class="pill">…</span></header>
+<main id="app"></main>
+<nav>
+  <button data-v="inicio" onclick="ir('inicio')">Cargas</button>
+  <button data-v="resumen" onclick="ir('resumen')">Resumen</button>
+  <button data-v="ajustes" onclick="ir('ajustes')">Ajustes</button>
+</nav>
+<div id="toast" hidden></div>
+<script>
+'use strict';
+/* ====== Configuración ====== */
+const ITEMS = [
+  ['luces', 'Luces'],
+  ['gato', 'Gato hidráulico'],
+  ['refaccion', 'Llanta de refacción'],
+  ['neumaticos', 'Condición de neumáticos'],
+  ['gps', 'GPS funcionando'],
+  ['antijammer', 'Anti Jammer']
+];
+const DEMO_CAT = [
+  {nombre: 'Maquila Ejemplo 1', tipo: 'Maquilero'},
+  {nombre: 'Maquila Ejemplo 2', tipo: 'Maquilero'},
+  {nombre: 'Maquila Ejemplo 3', tipo: 'Maquilero'},
+  {nombre: 'Unidad propia 01', tipo: 'Logística interna'},
+  {nombre: 'Unidad propia 02', tipo: 'Logística interna'}
+];
+const FOTO_MAX_LADO = 800;      // px
+const FOTO_MAX_B64 = 110000;    // ~80 KB por foto
+const app = document.getElementById('app');
+
+/* ====== Utilidades ====== */
+const pad = n => (n < 10 ? '0' : '') + n;
+const ymd = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+const hm = d => pad(d.getHours()) + ':' + pad(d.getMinutes());
+const stamp = d => ymd(d) + ' ' + hm(d);
+function parseStamp(s) { const p = String(s).split(/[- :T]/); return new Date(+p[0], p[1] - 1, +p[2], +p[3] || 0, +p[4] || 0); }
+const mins = (a, b) => Math.round((parseStamp(b) - parseStamp(a)) / 60000);
+function dur(m) { if (m == null || isNaN(m)) return '—'; return m >= 60 ? Math.floor(m / 60) + ' h ' + pad(m % 60) + ' min' : m + ' min'; }
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const label = k => (ITEMS.find(i => i[0] === k) || [k, k])[1];
+const fallas = r => ITEMS.map(i => i[0]).filter(k => r.check && r.check[k] === 'FALLA');
+const esLog = t => /^log/i.test(t || '');
+const nid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const val = id => (document.getElementById(id) || {}).value || '';
+const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const MES_L = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+const DIA = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const dm = s => { const d = parseStamp(s); return d.getDate() + ' ' + MES[d.getMonth()]; };
+
+let toastT;
+function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2600); }
+
+function lsGet(k, def) { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? def : v; } catch (e) { return def; } }
+function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+let cfg = lsGet('rampa_cfg', {});
+let catalogo = lsGet('rampa_cat', null) || DEMO_CAT;
+
+/* ====== Almacenamiento local (IndexedDB) ====== */
+let dbP;
+function idb() {
+  if (!dbP) dbP = new Promise((res, rej) => {
+    const r = indexedDB.open('rampa', 1);
+    r.onupgradeneeded = () => {
+      r.result.createObjectStore('registros', {keyPath: 'id'});
+      r.result.createObjectStore('outbox', {keyPath: 'n', autoIncrement: true});
+    };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+  return dbP;
+}
+function req(store, mode, fn) {
+  return idb().then(d => new Promise((res, rej) => {
+    const t = d.transaction(store, mode);
+    const r = fn(t.objectStore(store));
+    t.oncomplete = () => res(r && r.result);
+    t.onerror = t.onabort = () => rej(t.error);
+  }));
+}
+const all = s => req(s, 'readonly', o => o.getAll());
+const todos = () => all('registros');
+const get = id => req('registros', 'readonly', o => o.get(id));
+const put = r => req('registros', 'readwrite', o => o.put(r));
+const del = (s, k) => req(s, 'readwrite', o => o.delete(k));
+const encolar = id => cfg.url ? req('outbox', 'readwrite', o => o.add({id: id})) : Promise.resolve();
+
+/* ====== API (Apps Script) ====== */
+function fetchT(url, opt, ms) {
+  const ac = window.AbortController ? new AbortController() : null;
+  const t = setTimeout(() => { if (ac) ac.abort(); }, ms);
+  return fetch(url, Object.assign({}, opt, ac ? {signal: ac.signal} : {})).finally(() => clearTimeout(t));
+}
+// Siempre POST con texto plano: evita la verificación CORS y no pone la clave en la URL.
+async function api(action, datos, ms) {
+  const body = JSON.stringify(Object.assign({action: action, token: cfg.token || ''}, datos || {}));
+  const res = await fetchT(cfg.url, {method: 'POST', body: body}, ms || 30000);
+  const j = await res.json();
+  if (!j.ok) throw new Error(j.error || 'Error del servidor');
+  return j;
+}
+async function cargarCatalogo() {
+  const j = await api('catalogo');
+  if (j.maquileros && j.maquileros.length) { catalogo = j.maquileros; lsSet('rampa_cat', catalogo); }
+}
+
+/* ====== Sincronización ====== */
+let sincronizando = false;
+async function enviar(id) {
+  const r = await get(id);
+  if (!r) return;
+  const nuevas = {};
+  Object.keys(r.fotos || {}).forEach(k => { if (String(r.fotos[k]).indexOf('data:') === 0) nuevas[k] = r.fotos[k]; });
+  const j = await api('guardar', {registro: Object.assign({}, r, {fotos: nuevas})}, 90000);
+  const r2 = await get(id);                      // pudo cambiar mientras se enviaba
+  r2.fotos = Object.assign({}, r2.fotos, j.fotos || {});
+  if (r2.fin === r.fin) r2.sync = 'ok';
+  await put(r2);
+}
+async function sync() {
+  await pill();
+  if (sincronizando || !cfg.url || !navigator.onLine) return;
+  sincronizando = true;
+  try {
+    const ops = await all('outbox');
+    for (const op of ops) { await enviar(op.id); await del('outbox', op.n); await pill(); }
+  } catch (e) { console.warn('sync', e); }
+  finally { sincronizando = false; await pill(); }
+}
+async function pill() {
+  const el = document.getElementById('sync');
+  if (!cfg.url) { el.textContent = 'Demostración'; el.style.background = 'rgba(255,255,255,.18)'; return; }
+  const n = (await all('outbox')).length;
+  if (!navigator.onLine) { el.textContent = 'Sin señal' + (n ? ' · ' + n + ' por enviar' : ''); el.style.background = '#b26a00'; }
+  else if (n) { el.textContent = (sincronizando ? 'Enviando… ' : '') + n + ' por enviar'; el.style.background = '#b26a00'; }
+  else { el.textContent = 'Al día ✓'; el.style.background = '#1b7f3b'; }
+}
+
+/* ====== Navegación ====== */
+let vista = 'inicio';
+function ir(v) {
+  vista = v;
+  [].forEach.call(document.querySelectorAll('nav button'), b => { b.className = b.getAttribute('data-v') === v ? 'on' : ''; });
+  window.scrollTo(0, 0);
+  ({inicio: vInicio, nueva: vNueva, resumen: vResumen, ajustes: vAjustes})[v]();
+}
+
+/* ====== Vista: Cargas ====== */
+function chips(r) {
+  const f = fallas(r);
+  return f.length ? f.map(k => '<span class="chip">' + esc(label(k)) + '</span>').join('') : '<span class="chip ok">Checklist OK</span>';
+}
+async function vInicio() {
+  const rs = await todos();
+  const hoy = ymd(new Date());
+  const act = rs.filter(r => !r.fin).sort((a, b) => a.inicio < b.inicio ? -1 : 1);
+  const term = rs.filter(r => r.fin && r.fin.slice(0, 10) === hoy).sort((a, b) => a.fin < b.fin ? 1 : -1);
+  if (vista !== 'inicio') return;
+  app.innerHTML =
+    '<button class="btn" onclick="ir(\'nueva\')">+ Nueva carga</button>' +
+    '<h3>En carga (' + act.length + ')</h3>' +
+    (act.length ? act.map(cardActiva).join('') : '<p class="mut">No hay unidades cargando.</p>') +
+    '<h3>Terminadas hoy (' + term.length + ')</h3>' +
+    (term.map(cardTerm).join('') || '<p class="mut">Aún no hay cargas terminadas hoy.</p>');
+}
+function cardActiva(r) {
+  return '<div class="card"><div class="row"><b>' + esc(r.maquilero) + '</b><span class="mut">' + esc(r.tipo) + '</span></div>' +
+    '<div>' + esc(r.placas) + ' · ' + esc(r.operador) + '</div>' +
+    '<div class="mut">Inicio ' + r.inicio.slice(11) + ' · lleva ' + dur(mins(r.inicio, stamp(new Date()))) + '</div>' +
+    '<div>' + chips(r) + '</div>' +
+    '<div id="fin-' + r.id + '" style="margin-top:12px"><button class="btn ok" onclick="pedirFin(\'' + r.id + '\')">Finalizar carga</button></div></div>';
+}
+function cardTerm(r) {
+  return '<div class="card"><div class="row"><b>' + esc(r.maquilero) + '</b><span class="mut">' + (r.sync === 'pendiente' ? '⏳ por enviar' : '') + '</span></div>' +
+    '<div>' + esc(r.placas) + ' · ' + esc(r.operador) + '</div>' +
+    '<div class="mut">' + r.inicio.slice(11) + ' – ' + r.fin.slice(11) + ' · ' + dur(mins(r.inicio, r.fin)) + '</div><div>' + chips(r) + '</div></div>';
+}
+function pedirFin(id) {
+  document.getElementById('fin-' + id).innerHTML =
+    '<label class="f">Hora de finalización</label><input type="time" id="hf-' + id + '" value="' + hm(new Date()) + '">' +
+    '<div id="fe-' + id + '" class="err"></div>' +
+    '<div class="seg" style="margin-top:10px"><button onclick="vInicio()">Cancelar</button><button class="okon" onclick="finalizar(\'' + id + '\')">Confirmar</button></div>';
+}
+async function finalizar(id) {
+  const r = await get(id);
+  const t = val('hf-' + id);
+  if (!t) return;
+  const fin = ymd(new Date()) + ' ' + t;
+  if (fin < r.inicio) { document.getElementById('fe-' + id).textContent = 'La hora de fin es anterior al inicio (' + r.inicio.slice(11) + ').'; return; }
+  r.fin = fin;
+  r.sync = cfg.url ? 'pendiente' : 'demo';
+  await put(r);
+  await encolar(id);
+  toast('Carga finalizada · ' + dur(mins(r.inicio, r.fin)));
+  vInicio();
+  sync();
+}
+
+/* ====== Vista: Nueva carga ====== */
+let F = null;
+function vNueva() {
+  F = {tipo: 'Maquilero', check: {}, fotos: {}, notas: {}, hist: []};
+  const ahora = new Date();
+  app.innerHTML =
+    '<div class="card"><h2>Nueva carga</h2>' +
+    '<label class="f">Tipo</label><div class="seg" id="tipo">' +
+      ['Maquilero', 'Logística interna'].map(t => '<button data-t="' + t + '" class="' + (t === F.tipo ? 'on' : '') + '" onclick="setTipo(this)">' + t + '</button>').join('') + '</div>' +
+    '<label class="f" id="lmaq">Maquilero</label><select id="maq" onchange="llenarSug()"></select>' +
+    '<label class="f">Placas</label><input id="placas" autocomplete="off" autocapitalize="characters" list="dl-placas" placeholder="Ej. ABC-123-D" oninput="autoOp()"><datalist id="dl-placas"></datalist>' +
+    '<label class="f">Nombre del operador</label><input id="operador" autocomplete="off" autocapitalize="words" list="dl-op" placeholder="Nombre completo"><datalist id="dl-op"></datalist>' +
+    '<div class="two"><div><label class="f">Fecha</label><input id="fecha" type="date" value="' + ymd(ahora) + '"></div>' +
+    '<div><label class="f">Hora de inicio</label><input id="hini" type="time" value="' + hm(ahora) + '"></div></div></div>' +
+    '<div class="card"><div class="row"><h2>Checklist de seguridad</h2></div>' +
+    '<p class="mut" style="margin-top:0">Si un elemento falla, la app pide una foto.</p>' +
+    '<button class="btn sec" onclick="todoOk()">Marcar todo OK</button>' +
+    ITEMS.map(itemHtml).join('') + '</div>' +
+    '<div class="card"><label class="f" style="margin-top:0">Observaciones (opcional)</label><textarea id="obs" rows="2"></textarea>' +
+    '<div id="ferr" class="err"></div>' +
+    '<button class="btn" style="margin-top:12px" onclick="guardar(this)">Iniciar carga</button>' +
+    '<button class="btn sec" style="margin-top:8px" onclick="ir(\'inicio\')">Cancelar</button></div>';
+  llenarMaq();
+}
+function itemHtml(i) {
+  const k = i[0];
+  return '<div class="item" id="it-' + k + '"><div class="t">' + esc(i[1]) + '</div>' +
+    '<div class="seg"><button data-v="OK" onclick="marcar(\'' + k + '\',\'OK\')">OK</button><button data-v="FALLA" onclick="marcar(\'' + k + '\',\'FALLA\')">Falla</button></div>' +
+    '<div class="foto" hidden><label class="btn sec"><span>📷 Tomar foto (obligatoria)</span><input type="file" accept="image/*" capture="environment" onchange="foto(\'' + k + '\',this)"></label>' +
+    '<img class="thumb" hidden alt=""><div class="mut fz"></div>' +
+    '<input placeholder="¿Qué falla? (opcional)" style="margin-top:8px" oninput="F.notas[\'' + k + '\']=this.value"></div></div>';
+}
+function setTipo(b) {
+  F.tipo = b.getAttribute('data-t');
+  [].forEach.call(document.querySelectorAll('#tipo button'), x => { x.className = x === b ? 'on' : ''; });
+  document.getElementById('lmaq').textContent = esLog(F.tipo) ? 'Unidad / CEDIS' : 'Maquilero';
+  llenarMaq();
+}
+function llenarMaq() {
+  const ops = catalogo.filter(m => esLog(m.tipo) === esLog(F.tipo));
+  document.getElementById('maq').innerHTML = '<option value="">Selecciona…</option>' + ops.map(m => '<option>' + esc(m.nombre) + '</option>').join('');
+  llenarSug();
+}
+async function llenarSug() {
+  const m = val('maq');
+  const rs = (await todos()).filter(r => r.maquilero === m).sort((a, b) => a.inicio < b.inicio ? 1 : -1);
+  F.hist = rs;
+  const uniq = a => a.filter((x, i) => x && a.indexOf(x) === i);
+  document.getElementById('dl-placas').innerHTML = uniq(rs.map(r => r.placas)).map(p => '<option value="' + esc(p) + '">').join('');
+  document.getElementById('dl-op').innerHTML = uniq(rs.map(r => r.operador)).map(p => '<option value="' + esc(p) + '">').join('');
+}
+function autoOp() {
+  const p = val('placas').trim().toUpperCase();
+  const r = F.hist.find(x => x.placas === p);
+  if (r && !val('operador')) document.getElementById('operador').value = r.operador;
+}
+function marcar(k, v) {
+  F.check[k] = v;
+  const it = document.getElementById('it-' + k);
+  it.classList.remove('falta');
+  [].forEach.call(it.querySelectorAll('.seg button'), b => {
+    b.className = b.getAttribute('data-v') === v ? (v === 'OK' ? 'okon' : 'badon') : '';
+  });
+  it.querySelector('.foto').hidden = v !== 'FALLA';
+}
+function todoOk() { ITEMS.forEach(i => { if (!F.check[i[0]]) marcar(i[0], 'OK'); }); }
+async function foto(k, input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const it = document.getElementById('it-' + k);
+  const span = it.querySelector('label span');
+  span.textContent = 'Procesando foto…';
+  try {
+    const d = await comprimir(file, stamp(new Date()) + '  ' + (val('placas').toUpperCase() || '') + '  ' + label(k));
+    F.fotos[k] = d;
+    const img = it.querySelector('img');
+    img.src = d; img.hidden = false;
+    it.querySelector('.fz').textContent = 'Foto lista · ' + Math.round(d.length * 0.75 / 1024) + ' KB';
+    span.textContent = '📷 Cambiar foto';
+  } catch (e) {
+    span.textContent = '📷 Tomar foto (obligatoria)';
+    toast('No se pudo leer la foto. Intenta de nuevo.');
+  }
+  input.value = '';
+}
+// Reduce la foto a máx. 800 px y ~80 KB, y le estampa fecha, hora y placas.
+function comprimir(file, texto) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, FOTO_MAX_LADO / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+      const g = c.getContext('2d');
+      g.drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      const fs = Math.max(14, Math.round(c.width / 26));
+      g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(0, c.height - fs * 1.8, c.width, fs * 1.8);
+      g.fillStyle = '#fff'; g.font = 'bold ' + fs + 'px sans-serif'; g.fillText(texto, fs * 0.5, c.height - fs * 0.6);
+      let q = 0.6, d = c.toDataURL('image/jpeg', q);
+      while (d.length > FOTO_MAX_B64 && q > 0.25) { q -= 0.1; d = c.toDataURL('image/jpeg', q); }
+      res(d);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('imagen')); };
+    img.src = url;
+  });
+}
+async function guardar(btn) {
+  const errs = [];
+  const maq = val('maq'), placas = val('placas').trim().toUpperCase(), op = val('operador').trim();
+  const fecha = val('fecha'), hini = val('hini');
+  if (!maq) errs.push(esLog(F.tipo) ? 'Selecciona la unidad' : 'Selecciona el maquilero');
+  if (!placas) errs.push('Escribe las placas');
+  if (!op) errs.push('Escribe el nombre del operador');
+  if (!fecha || !hini) errs.push('Indica fecha y hora de inicio');
+  const sin = ITEMS.filter(i => !F.check[i[0]]);
+  const sinFoto = ITEMS.filter(i => F.check[i[0]] === 'FALLA' && !F.fotos[i[0]]);
+  if (sin.length) errs.push('Falta revisar: ' + sin.map(i => i[1]).join(', '));
+  if (sinFoto.length) errs.push('Falta foto de: ' + sinFoto.map(i => i[1]).join(', '));
+  sin.concat(sinFoto).forEach(i => document.getElementById('it-' + i[0]).classList.add('falta'));
+  document.getElementById('ferr').innerHTML = errs.map(esc).join('<br>');
+  if (errs.length) return;
+  btn.disabled = true;
+  const fotos = {}, notas = {};
+  ITEMS.forEach(i => {
+    if (F.check[i[0]] === 'FALLA') { fotos[i[0]] = F.fotos[i[0]]; if (F.notas[i[0]]) notas[i[0]] = F.notas[i[0]]; }
+  });
+  const r = {
+    id: nid(), fecha: fecha, tipo: F.tipo, maquilero: maq, placas: placas, operador: op,
+    inicio: fecha + ' ' + hini, fin: '', check: Object.assign({}, F.check), fotos: fotos, notas: notas,
+    obs: val('obs').trim(), capturo: cfg.capturo || '', sync: cfg.url ? 'pendiente' : 'demo'
+  };
+  await put(r);
+  await encolar(r.id);
+  toast('Carga iniciada: ' + maq);
+  ir('inicio');
+  sync();
+}
+
+/* ====== Vista: Resumen ====== */
+const R = {per: 'dia', ref: new Date(), filtro: 'todos', abierto: null, regs: [], aviso: '', n: 0};
+function lunes(d) { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return x; }
+function semanaISO(d) {
+  const x = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = x.getUTCDay() || 7; x.setUTCDate(x.getUTCDate() + 4 - day);
+  return Math.ceil(((x - Date.UTC(x.getUTCFullYear(), 0, 1)) / 864e5 + 1) / 7);
+}
+function rango() {
+  const r = R.ref;
+  if (R.per === 'dia') return [ymd(r), ymd(r)];
+  if (R.per === 'semana') { const a = lunes(r), b = new Date(a); b.setDate(a.getDate() + 6); return [ymd(a), ymd(b)]; }
+  return [ymd(new Date(r.getFullYear(), r.getMonth(), 1)), ymd(new Date(r.getFullYear(), r.getMonth() + 1, 0))];
+}
+function etiqueta() {
+  const g = rango(), r = R.ref;
+  if (R.per === 'dia') return (g[0] === ymd(new Date()) ? 'Hoy · ' : '') + DIA[r.getDay()] + ' ' + r.getDate() + ' ' + MES[r.getMonth()] + ' ' + r.getFullYear();
+  if (R.per === 'semana') return 'Semana ' + semanaISO(r) + ' · ' + dm(g[0]) + ' – ' + dm(g[1]);
+  return MES_L[r.getMonth()] + ' ' + r.getFullYear();
+}
+function mover(n) {
+  const r = new Date(R.ref);
+  if (R.per === 'dia') r.setDate(r.getDate() + n);
+  else if (R.per === 'semana') r.setDate(r.getDate() + 7 * n);
+  else { r.setDate(1); r.setMonth(r.getMonth() + n); }
+  R.ref = r; R.abierto = null; vResumen();
+}
+function setPer(p) { R.per = p; R.abierto = null; vResumen(); }
+function setFiltro(f) { R.filtro = f; R.abierto = null; pintarResumen(); }
+async function registrosRango(a, b) {
+  const enRango = r => r.fecha >= a && r.fecha <= b;
+  const local = (await todos()).filter(enRango);
+  if (!cfg.url) return {regs: local, aviso: 'Modo demostración: datos guardados solo en este teléfono.'};
+  try {
+    const j = await api('registros', {desde: a, hasta: b}, 25000);
+    const m = {};
+    (j.registros || []).forEach(r => { m[r.id] = r; });
+    local.forEach(r => { if (!m[r.id] || r.sync === 'pendiente') m[r.id] = r; });
+    return {regs: Object.keys(m).map(k => m[k]), aviso: ''};
+  } catch (e) {
+    return {regs: local, aviso: 'Sin conexión con la hoja: se muestra solo lo capturado en este teléfono.'};
+  }
+}
+async function vResumen() {
+  const g = rango(), n = ++R.n;
+  app.innerHTML =
+    '<div class="seg">' + [['dia', 'Día'], ['semana', 'Semana'], ['mes', 'Mes']].map(p =>
+      '<button class="' + (R.per === p[0] ? 'on' : '') + '" onclick="setPer(\'' + p[0] + '\')">' + p[1] + '</button>').join('') + '</div>' +
+    '<div class="nav2"><button class="nb" onclick="mover(-1)" aria-label="Anterior">‹</button><b>' + etiqueta() + '</b><button class="nb" onclick="mover(1)" aria-label="Siguiente">›</button></div>' +
+    '<div id="res"><p class="mut">Cargando…</p></div>';
+  const x = await registrosRango(g[0], g[1]);
+  if (n !== R.n || vista !== 'resumen') return;   // el usuario ya cambió de periodo
+  R.regs = x.regs; R.aviso = x.aviso;
+  pintarResumen();
+}
+function abrir(nombre) { R.abierto = R.abierto === nombre ? null : nombre; pintarResumen(); }
+function pintarResumen() {
+  const fil = R.regs.filter(r => R.filtro === 'todos' || (R.filtro === 'log') === esLog(r.tipo));
+  const tot = {c: 0, cf: 0, f: 0, min: 0, nm: 0, act: 0}, items = {}, by = {};
+  ITEMS.forEach(i => { items[i[0]] = 0; });
+  fil.forEach(r => {
+    const f = fallas(r);
+    const m = by[r.maquilero] || (by[r.maquilero] = {n: r.maquilero, tipo: r.tipo, c: 0, cf: 0, f: 0, min: 0, nm: 0, items: {}, regs: []});
+    [tot, m].forEach(o => { o.c++; if (f.length) o.cf++; o.f += f.length; if (r.fin) { o.min += mins(r.inicio, r.fin); o.nm++; } });
+    if (!r.fin) tot.act++;
+    f.forEach(k => { items[k]++; m.items[k] = (m.items[k] || 0) + 1; });
+    m.regs.push(r);
+  });
+  const lista = Object.keys(by).map(k => by[k]).sort((a, b) => b.cf - a.cf || b.c - a.c || a.n.localeCompare(b.n));
+  const maxI = Math.max.apply(null, [1].concat(ITEMS.map(i => items[i[0]])));
+  const pct = tot.c ? Math.round(tot.cf * 100 / tot.c) : 0;
+  let h = (R.aviso ? '<div class="aviso">' + esc(R.aviso) + '</div>' : '') +
+    '<div class="seg">' + [['todos', 'Todos'], ['maq', 'Maquileros'], ['log', 'Logística']].map(p =>
+      '<button class="' + (R.filtro === p[0] ? 'on' : '') + '" onclick="setFiltro(\'' + p[0] + '\')">' + p[1] + '</button>').join('') + '</div>' +
+    '<div class="kpis">' +
+      '<div class="kpi"><span>Cargas</span><b>' + tot.c + '</b><div class="mut">' + (tot.act ? tot.act + ' en curso' : '&nbsp;') + '</div></div>' +
+      '<div class="kpi' + (tot.cf ? ' bad' : '') + '"><span>Unidades con falla</span><b>' + tot.cf + '</b><div class="mut">' + pct + '% de las cargas</div></div>' +
+      '<div class="kpi' + (tot.f ? ' bad' : '') + '"><span>Fallas detectadas</span><b>' + tot.f + '</b><div class="mut">elementos del checklist</div></div>' +
+      '<div class="kpi"><span>Tiempo prom. carga</span><b style="font-size:22px">' + (tot.nm ? dur(Math.round(tot.min / tot.nm)) : '—') + '</b><div class="mut">' + tot.nm + ' terminadas</div></div>' +
+    '</div>';
+  if (!tot.c) return void (document.getElementById('res').innerHTML = h + '<p class="mut">No hay cargas en este periodo.</p>');
+  h += '<div class="card"><h2>Fallas por elemento</h2>' + ITEMS.map(i =>
+    '<div class="row"><span>' + esc(i[1]) + '</span><b' + (items[i[0]] ? ' style="color:var(--bad)"' : '') + '>' + items[i[0]] + '</b></div>' +
+    '<div class="bar"><i style="width:' + Math.round(items[i[0]] * 100 / maxI) + '%"></i></div>').join('') + '</div>';
+  h += '<h3>Por maquilero / unidad (' + lista.length + ')</h3>' + lista.map(m => {
+    const its = Object.keys(m.items).map(k => '<span class="chip">' + esc(label(k)) + (m.items[k] > 1 ? ' ×' + m.items[k] : '') + '</span>').join('');
+    const open = R.abierto === m.n;
+    return '<div class="card maq" onclick="abrir(this.getAttribute(\'data-n\'))" data-n="' + esc(m.n) + '">' +
+      '<div class="row"><b>' + esc(m.n) + '</b><span class="mut">' + (open ? '▲' : '▼') + '</span></div>' +
+      '<div class="mut">' + m.c + ' carga' + (m.c === 1 ? '' : 's') + ' · ' + m.cf + ' con falla · prom. ' + (m.nm ? dur(Math.round(m.min / m.nm)) : '—') + '</div>' +
+      '<div>' + (its || '<span class="chip ok">Sin fallas</span>') + '</div>' +
+      (open ? '<div class="det" onclick="event.stopPropagation()">' + m.regs.sort((a, b) => a.inicio < b.inicio ? 1 : -1).map(detalle).join('') + '</div>' : '') +
+      '</div>';
+  }).join('');
+  document.getElementById('res').innerHTML = h;
+}
+function detalle(r) {
+  const f = fallas(r);
+  const fotos = f.map(k => {
+    const u = (r.fotos || {})[k];
+    if (!u) return '';
+    if (String(u).indexOf('data:') === 0) return '<img class="thumb" src="' + u + '" alt="Foto ' + esc(label(k)) + '">';
+    return '<a href="' + esc(u) + '" target="_blank" rel="noopener">Foto: ' + esc(label(k)) + ' ↗</a> ';
+  }).join('');
+  const notas = f.filter(k => (r.notas || {})[k]).map(k => esc(label(k)) + ': ' + esc(r.notas[k])).join(' · ');
+  return '<div><b>' + dm(r.inicio) + ' · ' + r.inicio.slice(11) + ' – ' + (r.fin ? r.fin.slice(11) + ' (' + dur(mins(r.inicio, r.fin)) + ')' : 'en carga') + '</b>' +
+    '<div>' + esc(r.placas) + ' · ' + esc(r.operador) + '</div><div>' + chips(r) + '</div>' +
+    (notas ? '<div class="mut">' + notas + '</div>' : '') + (fotos ? '<div>' + fotos + '</div>' : '') +
+    (r.obs ? '<div class="mut">Obs.: ' + esc(r.obs) + '</div>' : '') + '</div>';
+}
+
+/* ====== Vista: Ajustes ====== */
+async function vAjustes() {
+  const n = (await all('outbox')).length;
+  const demoN = (await todos()).filter(r => r.sync === 'demo').length;
+  if (vista !== 'ajustes') return;
+  app.innerHTML =
+    '<div class="card"><h2>Conexión con Google Sheets</h2>' +
+    '<p class="mut">' + (cfg.url ? 'Conectada a tu hoja de cálculo.' : 'Sin configurar: la app está en <b>modo demostración</b> y guarda solo en este teléfono.') + '</p>' +
+    '<label class="f">URL de la API (termina en /exec)</label><input id="cu" value="' + esc(cfg.url || '') + '" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">' +
+    '<label class="f">Clave de acceso</label><input id="ct" value="' + esc(cfg.token || '') + '" autocomplete="off">' +
+    '<label class="f">Nombre de quien captura</label><input id="cc" value="' + esc(cfg.capturo || '') + '">' +
+    '<div id="cerr" class="err"></div>' +
+    '<button class="btn" style="margin-top:12px" onclick="guardarCfg(this)">Guardar y probar conexión</button></div>' +
+    (cfg.url ? '<div class="card"><h2>Sincronización</h2><p>' + n + ' registro(s) por enviar.</p><button class="btn sec" onclick="sync().then(vAjustes)">Enviar ahora</button></div>' : '') +
+    '<div class="card"><h2>Maquileros y unidades (' + catalogo.length + ')</h2><p class="mut">' +
+      (cfg.url ? 'Se administran en la hoja «Maquileros». Se actualizan al abrir la app.' : 'Lista de ejemplo. Con la hoja conectada se usa la lista real.') + '</p>' +
+      catalogo.map(m => '<div class="row" style="padding:4px 0"><span>' + esc(m.nombre) + '</span><span class="mut">' + esc(m.tipo) + '</span></div>').join('') + '</div>' +
+    (!cfg.url ? '<div class="card"><h2>Datos de prueba</h2><p class="mut">' + demoN + ' cargas de prueba en este teléfono.</p>' +
+      '<button class="btn sec" onclick="demo(this)">Generar 60 cargas de ejemplo</button>' +
+      '<div id="bd" style="margin-top:8px"><button class="btn sec" onclick="confirmarBorrar()">Borrar datos de prueba</button></div></div>' : '');
+}
+async function guardarCfg(btn) {
+  const url = val('cu').trim(), token = val('ct').trim(), capturo = val('cc').trim();
+  const err = document.getElementById('cerr');
+  err.textContent = '';
+  if (url && !/^https:\/\/script\.google\.com\/.+\/exec$/.test(url)) { err.textContent = 'La URL debe ser la de la app web de Apps Script y terminar en /exec.'; return; }
+  const antes = cfg;
+  cfg = {url: url, token: token, capturo: capturo};
+  if (url) {
+    btn.disabled = true; btn.textContent = 'Probando…';
+    try { await cargarCatalogo(); }
+    catch (e) { cfg = antes; btn.disabled = false; btn.textContent = 'Guardar y probar conexión'; err.textContent = 'No se pudo conectar: ' + e.message; return; }
+    const demos = (await todos()).filter(r => r.sync === 'demo');
+    for (const r of demos) await del('registros', r.id);
+  } else { catalogo = DEMO_CAT; lsSet('rampa_cat', null); }
+  lsSet('rampa_cfg', cfg);
+  toast(url ? 'Conectado ✓' : 'Guardado');
+  vAjustes(); sync();
+}
+function confirmarBorrar() {
+  document.getElementById('bd').innerHTML = '<p class="err">¿Borrar todas las cargas de prueba?</p><div class="seg"><button onclick="vAjustes()">Cancelar</button><button class="badon" onclick="borrarDemo()">Sí, borrar</button></div>';
+}
+async function borrarDemo() {
+  const rs = (await todos()).filter(r => r.sync === 'demo');
+  for (const r of rs) await del('registros', r.id);
+  toast('Datos de prueba borrados'); vAjustes();
+}
+async function demo(btn) {
+  btn.disabled = true;
+  const ops = ['J. Pérez', 'M. López', 'R. Hernández', 'A. García', 'L. Martínez', 'C. Ramírez'];
+  const ahora = new Date();
+  for (let i = 0; i < 60; i++) {
+    const d = new Date(ahora); d.setDate(d.getDate() - Math.floor(Math.random() * 35));
+    d.setHours(7 + Math.floor(Math.random() * 9), Math.floor(Math.random() * 60), 0, 0);
+    if (d > ahora) d.setDate(d.getDate() - 1);
+    const m = DEMO_CAT[i % DEMO_CAT.length];
+    const check = {};
+    ITEMS.forEach(it => { check[it[0]] = Math.random() < 0.07 ? 'FALLA' : 'OK'; });
+    const fin = new Date(d.getTime() + (25 + Math.floor(Math.random() * 80)) * 60000);
+    await put({id: nid(), fecha: ymd(d), tipo: m.tipo, maquilero: m.nombre, placas: 'DEMO-' + (100 + (i % DEMO_CAT.length) * 7 + (i % 2)),
+      operador: ops[i % ops.length], inicio: stamp(d), fin: stamp(fin), check: check, fotos: {}, notas: {}, obs: '', capturo: 'Demo', sync: 'demo'});
+  }
+  toast('60 cargas de ejemplo creadas'); vAjustes();
+}
+
+/* ====== Inicio ====== */
+async function limpiar() {   // libera espacio: borra cargas ya enviadas de hace más de 45 días
+  const lim = new Date(); lim.setDate(lim.getDate() - 45);
+  const viejos = (await todos()).filter(r => r.sync === 'ok' && r.fin && r.fecha < ymd(lim));
+  for (const r of viejos) await del('registros', r.id);
+}
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+window.addEventListener('online', sync);
+window.addEventListener('offline', pill);
+setInterval(sync, 60000);
+setInterval(() => { if (vista === 'inicio' && !document.querySelector('[id^="hf-"]')) vInicio(); }, 60000);
+limpiar().catch(() => {}).then(() => {
+  ir('inicio');
+  sync();
+  if (cfg.url && navigator.onLine) cargarCatalogo().catch(() => {});
+});
+</script>
+</body>
+</html>
