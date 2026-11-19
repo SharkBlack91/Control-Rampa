@@ -86,13 +86,6 @@ const ITEMS = [
   ['gps', 'GPS funcionando'],
   ['antijammer', 'Anti Jammer']
 ];
-const DEMO_CAT = [
-  {nombre: 'Maquila Ejemplo 1', tipo: 'Maquilero'},
-  {nombre: 'Maquila Ejemplo 2', tipo: 'Maquilero'},
-  {nombre: 'Maquila Ejemplo 3', tipo: 'Maquilero'},
-  {nombre: 'Unidad propia 01', tipo: 'Logística interna'},
-  {nombre: 'Unidad propia 02', tipo: 'Logística interna'}
-];
 const FOTO_MAX_LADO = 800;      // px
 const FOTO_MAX_B64 = 110000;    // ~80 KB por foto
 const app = document.getElementById('app');
@@ -122,9 +115,9 @@ function toast(msg) { const t = document.getElementById('toast'); t.textContent 
 function lsGet(k, def) { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? def : v; } catch (e) { return def; } }
 function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
 let cfg = lsGet('rampa_cfg', {});
-const demoCat = () => lsGet('rampa_cat_demo', null) || DEMO_CAT.map(m => Object.assign({activo: true}, m));
 const activos = lista => lista.filter(m => m.activo !== false).map(m => ({nombre: m.nombre, tipo: m.tipo}));
-let catalogo = cfg.url ? (lsGet('rampa_cat', null) || []) : activos(demoCat());
+let catalogo = lsGet('rampa_cat', null) || [];
+let enlaceError = '';
 
 /* ====== Almacenamiento local (IndexedDB) ====== */
 let dbP;
@@ -199,7 +192,7 @@ async function sync() {
 }
 async function pill() {
   const el = document.getElementById('sync');
-  if (!cfg.url) { el.textContent = 'Demostración'; el.style.background = 'rgba(255,255,255,.18)'; return; }
+  if (!cfg.url) { el.textContent = 'Sin conectar'; el.style.background = 'rgba(255,255,255,.18)'; return; }
   const n = (await all('outbox')).length;
   if (!navigator.onLine) { el.textContent = 'Sin señal' + (n ? ' · ' + n + ' por enviar' : ''); el.style.background = '#b26a00'; }
   else if (n) { el.textContent = (sincronizando ? 'Enviando… ' : '') + n + ' por enviar'; el.style.background = '#b26a00'; }
@@ -226,13 +219,39 @@ async function vInicio() {
   const act = rs.filter(r => !r.fin).sort((a, b) => a.inicio < b.inicio ? -1 : 1);
   const term = rs.filter(r => r.fin && r.fin.slice(0, 10) === hoy).sort((a, b) => a.fin < b.fin ? 1 : -1);
   if (vista !== 'inicio') return;
+  if (!cfg.url) {
+    app.innerHTML = '<div class="card"><h2>Celular sin conectar</h2>' + (enlaceError ? '<p class="err">' + esc(enlaceError) + '</p>' : '') +
+      '<p>Para empezar a capturar, pide al administrador el <b>enlace de configuración</b> y ábrelo en este celular.</p></div>';
+    return;
+  }
+  if (!cfg.capturo) { vCapturista(); return; }
   app.innerHTML =
+    '<div class="row mut" style="margin:0 2px 10px"><span>Captura: <b style="color:var(--ink)">' + esc(cfg.capturo) + '</b></span>' +
+    '<a href="#" onclick="cambiarCapturista();return false" style="color:var(--pri);font-weight:700">Cambiar</a></div>' +
     '<button class="btn" onclick="ir(\'nueva\')">+ Nueva carga</button>' +
     '<h3>En carga (' + act.length + ')</h3>' +
     (act.length ? act.map(cardActiva).join('') : '<p class="mut">No hay unidades cargando.</p>') +
     '<h3>Terminadas hoy (' + term.length + ')</h3>' +
     (term.map(cardTerm).join('') || '<p class="mut">Aún no hay cargas terminadas hoy.</p>');
 }
+/* ====== Capturista ====== */
+function vCapturista() {
+  app.innerHTML = '<div class="card"><h2>¿Quién captura?</h2>' +
+    '<p class="mut" style="margin-top:0">Tu nombre queda registrado en cada carga que captures.</p>' +
+    '<label class="f">Nombre completo</label><input id="cn" autocapitalize="words" maxlength="60" autocomplete="name">' +
+    '<div id="cne" class="err"></div>' +
+    '<button class="btn" style="margin-top:12px" onclick="guardarCapturista()">Continuar</button></div>';
+  document.getElementById('cn').focus();
+}
+function guardarCapturista() {
+  const n = val('cn').trim().replace(/\s+/g, ' ');
+  if (n.length < 3) { document.getElementById('cne').textContent = 'Escribe tu nombre completo.'; return; }
+  cfg.capturo = n; lsSet('rampa_cfg', cfg);
+  toast('Hola, ' + n.split(' ')[0]);
+  ir('inicio');
+}
+function cambiarCapturista() { cfg.capturo = ''; lsSet('rampa_cfg', cfg); ir('inicio'); }
+
 function cardActiva(r) {
   return '<div class="card"><div class="row"><b>' + esc(r.maquilero) + '</b><span class="mut">' + esc(r.tipo) + '</span></div>' +
     '<div>' + esc(r.placas) + ' · ' + esc(r.operador) + '</div>' +
@@ -269,7 +288,8 @@ async function finalizar(id) {
 /* ====== Vista: Nueva carga ====== */
 let F = null;
 function vNueva() {
-  F = {tipo: 'Maquilero', check: {}, fotos: {}, notas: {}, hist: []};
+  if (!cfg.url || !cfg.capturo) { ir('inicio'); return; }
+  F ={tipo: 'Maquilero', check: {}, fotos: {}, notas: {}, hist: []};
   const ahora = new Date();
   app.innerHTML =
     '<div class="card"><h2>Nueva carga</h2>' +
@@ -438,7 +458,7 @@ function setFiltro(f) { R.filtro = f; R.abierto = null; pintarResumen(); }
 async function registrosRango(a, b) {
   const enRango = r => r.fecha >= a && r.fecha <= b;
   const local = (await todos()).filter(enRango);
-  if (!cfg.url) return {regs: local, aviso: 'Modo demostración: datos guardados solo en este teléfono.'};
+  if (!cfg.url) return {regs: local, aviso: 'Este celular no está conectado a la hoja.'};
   try {
     const j = await api('registros', {desde: a, hasta: b}, 25000);
     const m = {};
@@ -518,33 +538,85 @@ function detalle(r) {
 }
 
 /* ====== Vista: Ajustes ====== */
+const btnChico = 'class="nb" style="width:auto;padding:0 14px;font-size:15px;font-weight:700"';
 async function vAjustes() {
   const n = (await all('outbox')).length;
-  const demoN = (await todos()).filter(r => r.sync === 'demo').length;
   if (vista !== 'ajustes') return;
+  if (!cfg.url) {
+    app.innerHTML = '<div class="card"><h2>Celular sin conectar</h2>' + (enlaceError ? '<p class="err">' + esc(enlaceError) + '</p>' : '') +
+      '<p>Abre en este celular el <b>enlace de configuración</b> que te dé el administrador.</p></div>' + cardAdmin(n);
+    return;
+  }
   app.innerHTML =
-    '<div class="card"><h2>Conexión con Google Sheets</h2>' +
-    '<p class="mut">' + (cfg.url ? 'Conectada a tu hoja de cálculo.' : 'Sin configurar: la app está en <b>modo demostración</b> y guarda solo en este teléfono.') + '</p>' +
-    '<label class="f">URL de la API (termina en /exec)</label><input id="cu" value="' + esc(cfg.url || '') + '" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">' +
-    '<label class="f">Clave de acceso</label><input id="ct" value="' + esc(cfg.token || '') + '" autocomplete="off">' +
-    '<label class="f">Nombre de quien captura</label><input id="cc" value="' + esc(cfg.capturo || '') + '">' +
-    '<div id="cerr" class="err"></div>' +
-    '<button class="btn" style="margin-top:12px" onclick="guardarCfg(this)">Guardar y probar conexión</button></div>' +
-    (cfg.url ? '<div class="card"><h2>Sincronización</h2><p>' + n + ' registro(s) por enviar.</p><button class="btn sec" onclick="sync().then(vAjustes)">Enviar ahora</button></div>' : '') +
-    '<div class="card" id="catcard"></div>' +
-    (!cfg.url ? '<div class="card"><h2>Datos de prueba</h2><p class="mut">' + demoN + ' cargas de prueba en este teléfono.</p>' +
-      '<button class="btn sec" onclick="demo(this)">Generar 60 cargas de ejemplo</button>' +
-      '<div id="bd" style="margin-top:8px"><button class="btn sec" onclick="confirmarBorrar()">Borrar datos de prueba</button></div></div>' : '');
+    '<div class="card"><h2>Quién captura</h2><div class="row" style="align-items:center">' +
+      '<b style="font-size:18px">' + esc(cfg.capturo || '—') + '</b><button ' + btnChico + ' onclick="cambiarCapturista()">Cambiar</button></div></div>' +
+    '<div class="card"><h2>Envío a la hoja</h2><p>' + (n ? n + ' registro(s) por enviar.' : 'Todo enviado ✓') + '</p>' +
+      (n ? '<button class="btn sec" onclick="sync().then(vAjustes)">Enviar ahora</button>' : '') + '</div>' +
+    '<div class="card" id="catcard"></div>' + cardAdmin(n);
   CAT = null; pintarCat();
   try { await cargarCatEdit(); pintarCat(); }
   catch (e) { pintarCat('No se pudo cargar la lista' + (navigator.onLine ? ': ' + e.message : ': no hay señal. Para editarla se necesita conexión.')); }
+}
+// Sección plegada para el administrador: conectar a mano o desconectar el celular.
+function cardAdmin(n) {
+  return '<details class="card"><summary style="font-weight:700;color:var(--mut);cursor:pointer">Administrador</summary>' +
+    (cfg.url
+      ? '<p class="mut">Este celular está conectado a la hoja. Para cambiar la conexión, abre en él un enlace de configuración nuevo.</p>' +
+        '<div id="dc"><button class="btn sec" onclick="pedirDesconectar(' + n + ')">Desconectar este celular</button></div>'
+      : '<p class="mut">Si no tienes el enlace, puedes conectar a mano.</p>' +
+        '<label class="f">URL de la API (termina en /exec)</label><input id="cu" autocomplete="off" placeholder="https://script.google.com/macros/s/…/exec">' +
+        '<label class="f">Clave de acceso</label><input id="ct" autocomplete="off">' +
+        '<div id="cerr" class="err"></div><button class="btn" style="margin-top:12px" onclick="guardarCfg(this)">Conectar</button>') +
+    '</details>';
+}
+function pedirDesconectar(n) {
+  const el = document.getElementById('dc');
+  if (n) { el.innerHTML = '<p class="err">Hay ' + n + ' registro(s) sin enviar. Espera a que se envíen antes de desconectar.</p>'; return; }
+  el.innerHTML = '<p class="err">¿Desconectar este celular? Dejará de poder capturar hasta que se abra un enlace de configuración.</p>' +
+    '<div class="seg"><button onclick="vAjustes()">Cancelar</button><button class="badon" onclick="desconectar()">Sí, desconectar</button></div>';
+}
+async function desconectar() {
+  if ((await all('outbox')).length) { vAjustes(); return; }
+  for (const r of await todos()) await del('registros', r.id);
+  cfg = {}; catalogo = [];
+  lsSet('rampa_cfg', cfg); lsSet('rampa_cat', null);
+  toast('Celular desconectado'); pill(); ir('inicio');
+}
+
+/* ====== Conexión con la hoja ====== */
+async function conectar(url, token) {
+  if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(url)) throw new Error('la URL debe ser la de Apps Script y terminar en /exec.');
+  if (!token) throw new Error('falta la clave de acceso.');
+  const antes = cfg;
+  cfg = Object.assign({}, cfg, {url: url, token: token});
+  try { await cargarCatalogo(); }
+  catch (e) { cfg = antes; throw e; }
+  lsSet('rampa_cfg', cfg);
+  enlaceError = '';
+  for (const r of (await todos()).filter(r => r.sync === 'demo')) await del('registros', r.id);
+}
+async function guardarCfg(btn) {
+  const err = document.getElementById('cerr');
+  err.textContent = ''; btn.disabled = true; btn.textContent = 'Conectando…';
+  try { await conectar(val('cu').trim(), val('ct').trim()); }
+  catch (e) { btn.disabled = false; btn.textContent = 'Conectar'; err.textContent = 'No se pudo conectar: ' + e.message; return; }
+  toast('Celular conectado ✓'); pill(); ir('inicio'); sync();
+}
+// Enlace de configuración: …/Control-Rampa/#url=<URL /exec>&clave=<clave>
+// Lo que va después de # no se envía a GitHub; se borra de la barra de direcciones al leerlo.
+async function leerEnlace() {
+  if (location.hash.indexOf('url=') < 0) return false;
+  const p = new URLSearchParams(location.hash.slice(1));
+  history.replaceState(null, '', location.pathname + location.search);
+  try { await conectar((p.get('url') || '').trim(), (p.get('clave') || '').trim()); return true; }
+  catch (e) { enlaceError = 'El enlace de configuración no funcionó: ' + (navigator.onLine ? e.message : 'no hay señal. Ábrelo de nuevo con conexión.'); return false; }
 }
 
 /* ====== Catálogo de maquileros (editable desde Ajustes) ====== */
 let CAT = null, E = null;   // lista completa (con inactivos) y el elemento en edición
 const ordenar = l => l.sort((a, b) => (b.activo !== false) - (a.activo !== false) || esLog(a.tipo) - esLog(b.tipo) || a.nombre.localeCompare(b.nombre));
 async function cargarCatEdit() {
-  CAT = ordenar(cfg.url ? (await api('catalogo', {todos: true})).maquileros : demoCat());
+  CAT = ordenar((await api('catalogo', {todos: true})).maquileros);
 }
 function selSeg(b) { [].forEach.call(b.parentNode.children, x => { x.className = x === b ? 'on' : ''; }); return b.getAttribute('data-t'); }
 function pintarCat(msg) {
@@ -552,12 +624,11 @@ function pintarCat(msg) {
   if (!el) return;
   if (!CAT) { el.innerHTML = '<h2>Maquileros y unidades</h2><p class="mut">' + esc(msg || 'Cargando…') + '</p>'; return; }
   el.innerHTML = '<div class="row"><h2>Maquileros y unidades</h2><span class="mut">' + CAT.filter(m => m.activo !== false).length + ' activos</span></div>' +
-    (cfg.url ? '' : '<p class="mut" style="margin-top:0">Lista de ejemplo (modo demostración).</p>') +
     '<button class="btn sec" onclick="editMaq(-1)">+ Agregar maquilero o unidad</button><div id="maqform-1"></div>' +
     CAT.map((m, i) => '<div style="border-top:1px solid var(--line);padding:10px 0;margin-top:' + (i ? 0 : 10) + 'px">' +
       '<div class="row" style="align-items:center"><div' + (m.activo === false ? ' style="color:var(--mut)"' : '') + '><b>' + esc(m.nombre) + '</b><br>' +
       '<span class="mut">' + esc(m.tipo) + (m.activo === false ? ' · <b>inactivo</b>' : '') + '</span></div>' +
-      '<button class="nb" style="width:auto;padding:0 14px;font-size:15px;font-weight:700" onclick="editMaq(' + i + ')">Editar</button></div>' +
+      '<button ' + btnChico + ' onclick="editMaq(' + i + ')">Editar</button></div>' +
       '<div id="maqform' + i + '"></div></div>').join('');
 }
 function editMaq(i) {
@@ -583,61 +654,12 @@ async function guardarMaq(btn) {
   if (otro) { err.textContent = 'Ya existe «' + otro.nombre + '».'; return; }
   const m = {nombre: nombre, tipo: E.tipo, activo: E.activo};
   btn.disabled = true; btn.textContent = 'Guardando…';
-  if (cfg.url) {
-    try { CAT = (await api('maquilero', {original: E.i >= 0 ? CAT[E.i].nombre : '', maquilero: m})).maquileros; }
-    catch (e) { btn.disabled = false; btn.textContent = 'Guardar'; err.textContent = 'No se guardó: ' + (navigator.onLine ? e.message : 'no hay señal. Intenta cuando haya conexión.'); return; }
-  } else {
-    if (E.i >= 0) CAT[E.i] = m; else CAT.push(m);
-    lsSet('rampa_cat_demo', CAT);
-  }
-  ordenar(CAT);
+  try { CAT = ordenar((await api('maquilero', {original: E.i >= 0 ? CAT[E.i].nombre : '', maquilero: m})).maquileros); }
+  catch (e) { btn.disabled = false; btn.textContent = 'Guardar'; err.textContent = 'No se guardó: ' + (navigator.onLine ? e.message : 'no hay señal. Intenta cuando haya conexión.'); return; }
   catalogo = activos(CAT);
-  if (cfg.url) lsSet('rampa_cat', catalogo);
+  lsSet('rampa_cat', catalogo);
   toast('Guardado: ' + nombre);
   pintarCat();
-}
-async function guardarCfg(btn) {
-  const url = val('cu').trim(), token = val('ct').trim(), capturo = val('cc').trim();
-  const err = document.getElementById('cerr');
-  err.textContent = '';
-  if (url && !/^https:\/\/script\.google\.com\/.+\/exec$/.test(url)) { err.textContent = 'La URL debe ser la de la app web de Apps Script y terminar en /exec.'; return; }
-  const antes = cfg;
-  cfg = {url: url, token: token, capturo: capturo};
-  if (url) {
-    btn.disabled = true; btn.textContent = 'Probando…';
-    try { await cargarCatalogo(); }
-    catch (e) { cfg = antes; btn.disabled = false; btn.textContent = 'Guardar y probar conexión'; err.textContent = 'No se pudo conectar: ' + e.message; return; }
-    const demos = (await todos()).filter(r => r.sync === 'demo');
-    for (const r of demos) await del('registros', r.id);
-  } else { catalogo = activos(demoCat()); lsSet('rampa_cat', null); }
-  lsSet('rampa_cfg', cfg);
-  toast(url ? 'Conectado ✓' : 'Guardado');
-  vAjustes(); sync();
-}
-function confirmarBorrar() {
-  document.getElementById('bd').innerHTML = '<p class="err">¿Borrar todas las cargas de prueba?</p><div class="seg"><button onclick="vAjustes()">Cancelar</button><button class="badon" onclick="borrarDemo()">Sí, borrar</button></div>';
-}
-async function borrarDemo() {
-  const rs = (await todos()).filter(r => r.sync === 'demo');
-  for (const r of rs) await del('registros', r.id);
-  toast('Datos de prueba borrados'); vAjustes();
-}
-async function demo(btn) {
-  btn.disabled = true;
-  const ops = ['J. Pérez', 'M. López', 'R. Hernández', 'A. García', 'L. Martínez', 'C. Ramírez'];
-  const ahora = new Date();
-  for (let i = 0; i < 60; i++) {
-    const d = new Date(ahora); d.setDate(d.getDate() - Math.floor(Math.random() * 35));
-    d.setHours(7 + Math.floor(Math.random() * 9), Math.floor(Math.random() * 60), 0, 0);
-    if (d > ahora) d.setDate(d.getDate() - 1);
-    const m = DEMO_CAT[i % DEMO_CAT.length];
-    const check = {};
-    ITEMS.forEach(it => { check[it[0]] = Math.random() < 0.07 ? 'FALLA' : 'OK'; });
-    const fin = new Date(d.getTime() + (25 + Math.floor(Math.random() * 80)) * 60000);
-    await put({id: nid(), fecha: ymd(d), tipo: m.tipo, maquilero: m.nombre, placas: 'DEMO-' + (100 + (i % DEMO_CAT.length) * 7 + (i % 2)),
-      operador: ops[i % ops.length], inicio: stamp(d), fin: stamp(fin), check: check, fotos: {}, notas: {}, obs: '', capturo: 'Demo', sync: 'demo'});
-  }
-  toast('60 cargas de ejemplo creadas'); vAjustes();
 }
 
 /* ====== Inicio ====== */
@@ -651,9 +673,13 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
 }
 window.addEventListener('online', sync);
 window.addEventListener('offline', pill);
+window.addEventListener('hashchange', () => { leerEnlace().then(ok => { if (ok) { toast('Celular conectado ✓'); sync(); } ir('inicio'); }); });
 setInterval(sync, 60000);
-setInterval(() => { if (vista === 'inicio' && !document.querySelector('[id^="hf-"]')) vInicio(); }, 60000);
-limpiar().catch(() => {}).then(() => {
+setInterval(() => { if (vista === 'inicio' && cfg.url && cfg.capturo && !document.querySelector('[id^="hf-"]')) vInicio(); }, 60000);
+leerEnlace().then(ok => {
+  if (ok) toast('Celular conectado ✓');
+  return limpiar().catch(() => {});
+}).then(() => {
   ir('inicio');
   sync();
   if (cfg.url && navigator.onLine) cargarCatalogo().catch(() => {});
