@@ -122,7 +122,9 @@ function toast(msg) { const t = document.getElementById('toast'); t.textContent 
 function lsGet(k, def) { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? def : v; } catch (e) { return def; } }
 function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
 let cfg = lsGet('rampa_cfg', {});
-let catalogo = lsGet('rampa_cat', null) || DEMO_CAT;
+const demoCat = () => lsGet('rampa_cat_demo', null) || DEMO_CAT.map(m => Object.assign({activo: true}, m));
+const activos = lista => lista.filter(m => m.activo !== false).map(m => ({nombre: m.nombre, tipo: m.tipo}));
+let catalogo = cfg.url ? (lsGet('rampa_cat', null) || []) : activos(demoCat());
 
 /* ====== Almacenamiento local (IndexedDB) ====== */
 let dbP;
@@ -169,7 +171,7 @@ async function api(action, datos, ms) {
 }
 async function cargarCatalogo() {
   const j = await api('catalogo');
-  if (j.maquileros && j.maquileros.length) { catalogo = j.maquileros; lsSet('rampa_cat', catalogo); }
+  if (j.maquileros) { catalogo = j.maquileros; lsSet('rampa_cat', catalogo); }
 }
 
 /* ====== Sincronización ====== */
@@ -529,12 +531,70 @@ async function vAjustes() {
     '<div id="cerr" class="err"></div>' +
     '<button class="btn" style="margin-top:12px" onclick="guardarCfg(this)">Guardar y probar conexión</button></div>' +
     (cfg.url ? '<div class="card"><h2>Sincronización</h2><p>' + n + ' registro(s) por enviar.</p><button class="btn sec" onclick="sync().then(vAjustes)">Enviar ahora</button></div>' : '') +
-    '<div class="card"><h2>Maquileros y unidades (' + catalogo.length + ')</h2><p class="mut">' +
-      (cfg.url ? 'Se administran en la hoja «Maquileros». Se actualizan al abrir la app.' : 'Lista de ejemplo. Con la hoja conectada se usa la lista real.') + '</p>' +
-      catalogo.map(m => '<div class="row" style="padding:4px 0"><span>' + esc(m.nombre) + '</span><span class="mut">' + esc(m.tipo) + '</span></div>').join('') + '</div>' +
+    '<div class="card" id="catcard"></div>' +
     (!cfg.url ? '<div class="card"><h2>Datos de prueba</h2><p class="mut">' + demoN + ' cargas de prueba en este teléfono.</p>' +
       '<button class="btn sec" onclick="demo(this)">Generar 60 cargas de ejemplo</button>' +
       '<div id="bd" style="margin-top:8px"><button class="btn sec" onclick="confirmarBorrar()">Borrar datos de prueba</button></div></div>' : '');
+  CAT = null; pintarCat();
+  try { await cargarCatEdit(); pintarCat(); }
+  catch (e) { pintarCat('No se pudo cargar la lista' + (navigator.onLine ? ': ' + e.message : ': no hay señal. Para editarla se necesita conexión.')); }
+}
+
+/* ====== Catálogo de maquileros (editable desde Ajustes) ====== */
+let CAT = null, E = null;   // lista completa (con inactivos) y el elemento en edición
+const ordenar = l => l.sort((a, b) => (b.activo !== false) - (a.activo !== false) || esLog(a.tipo) - esLog(b.tipo) || a.nombre.localeCompare(b.nombre));
+async function cargarCatEdit() {
+  CAT = ordenar(cfg.url ? (await api('catalogo', {todos: true})).maquileros : demoCat());
+}
+function selSeg(b) { [].forEach.call(b.parentNode.children, x => { x.className = x === b ? 'on' : ''; }); return b.getAttribute('data-t'); }
+function pintarCat(msg) {
+  const el = document.getElementById('catcard');
+  if (!el) return;
+  if (!CAT) { el.innerHTML = '<h2>Maquileros y unidades</h2><p class="mut">' + esc(msg || 'Cargando…') + '</p>'; return; }
+  el.innerHTML = '<div class="row"><h2>Maquileros y unidades</h2><span class="mut">' + CAT.filter(m => m.activo !== false).length + ' activos</span></div>' +
+    (cfg.url ? '' : '<p class="mut" style="margin-top:0">Lista de ejemplo (modo demostración).</p>') +
+    '<button class="btn sec" onclick="editMaq(-1)">+ Agregar maquilero o unidad</button><div id="maqform-1"></div>' +
+    CAT.map((m, i) => '<div style="border-top:1px solid var(--line);padding:10px 0;margin-top:' + (i ? 0 : 10) + 'px">' +
+      '<div class="row" style="align-items:center"><div' + (m.activo === false ? ' style="color:var(--mut)"' : '') + '><b>' + esc(m.nombre) + '</b><br>' +
+      '<span class="mut">' + esc(m.tipo) + (m.activo === false ? ' · <b>inactivo</b>' : '') + '</span></div>' +
+      '<button class="nb" style="width:auto;padding:0 14px;font-size:15px;font-weight:700" onclick="editMaq(' + i + ')">Editar</button></div>' +
+      '<div id="maqform' + i + '"></div></div>').join('');
+}
+function editMaq(i) {
+  pintarCat();
+  const m = i >= 0 ? CAT[i] : {nombre: '', tipo: 'Maquilero', activo: true};
+  E = {i: i, tipo: m.tipo, activo: m.activo !== false};
+  const seg = (ops, actual, fn) => '<div class="seg">' + ops.map(o => '<button data-t="' + o[0] + '" class="' + (o[0] === actual ? 'on' : '') + '" onclick="' + fn + '">' + o[1] + '</button>').join('') + '</div>';
+  document.getElementById('maqform' + i).innerHTML =
+    '<div style="background:#f6f8fb;border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:10px">' +
+    '<label class="f" style="margin-top:0">Nombre</label><input id="mn" value="' + esc(m.nombre) + '" maxlength="80" autocapitalize="words">' +
+    '<label class="f">Tipo</label>' + seg([['Maquilero', 'Maquilero'], ['Logística interna', 'Logística interna']], esLog(m.tipo) ? 'Logística interna' : 'Maquilero', 'E.tipo=selSeg(this)') +
+    (i >= 0 ? '<label class="f">Estado</label>' + seg([['si', 'Activo'], ['no', 'Inactivo']], E.activo ? 'si' : 'no', 'E.activo=selSeg(this)===\'si\'') +
+      '<p class="mut">Inactivo: deja de aparecer al registrar cargas, pero su historial se conserva. Si cambias el nombre, las cargas anteriores siguen con el nombre anterior.</p>' : '') +
+    '<div id="me" class="err"></div>' +
+    '<div class="seg" style="margin-top:10px"><button onclick="pintarCat()">Cancelar</button><button class="on" onclick="guardarMaq(this)">Guardar</button></div></div>';
+  document.getElementById('mn').focus();
+}
+async function guardarMaq(btn) {
+  const nombre = val('mn').trim().replace(/\s+/g, ' ');
+  const err = document.getElementById('me');
+  if (!nombre) { err.textContent = 'Escribe el nombre.'; return; }
+  const otro = CAT.find((m, j) => j !== E.i && m.nombre.toLowerCase() === nombre.toLowerCase());
+  if (otro) { err.textContent = 'Ya existe «' + otro.nombre + '».'; return; }
+  const m = {nombre: nombre, tipo: E.tipo, activo: E.activo};
+  btn.disabled = true; btn.textContent = 'Guardando…';
+  if (cfg.url) {
+    try { CAT = (await api('maquilero', {original: E.i >= 0 ? CAT[E.i].nombre : '', maquilero: m})).maquileros; }
+    catch (e) { btn.disabled = false; btn.textContent = 'Guardar'; err.textContent = 'No se guardó: ' + (navigator.onLine ? e.message : 'no hay señal. Intenta cuando haya conexión.'); return; }
+  } else {
+    if (E.i >= 0) CAT[E.i] = m; else CAT.push(m);
+    lsSet('rampa_cat_demo', CAT);
+  }
+  ordenar(CAT);
+  catalogo = activos(CAT);
+  if (cfg.url) lsSet('rampa_cat', catalogo);
+  toast('Guardado: ' + nombre);
+  pintarCat();
 }
 async function guardarCfg(btn) {
   const url = val('cu').trim(), token = val('ct').trim(), capturo = val('cc').trim();
@@ -549,7 +609,7 @@ async function guardarCfg(btn) {
     catch (e) { cfg = antes; btn.disabled = false; btn.textContent = 'Guardar y probar conexión'; err.textContent = 'No se pudo conectar: ' + e.message; return; }
     const demos = (await todos()).filter(r => r.sync === 'demo');
     for (const r of demos) await del('registros', r.id);
-  } else { catalogo = DEMO_CAT; lsSet('rampa_cat', null); }
+  } else { catalogo = activos(demoCat()); lsSet('rampa_cat', null); }
   lsSet('rampa_cfg', cfg);
   toast(url ? 'Conectado ✓' : 'Guardado');
   vAjustes(); sync();
