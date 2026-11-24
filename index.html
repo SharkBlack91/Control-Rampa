@@ -63,6 +63,16 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--pri);outline-off
 .det a{color:var(--pri);font-weight:700}
 .aviso{background:#fff6e5;border:1px solid #f0d199;color:#7a4a00;border-radius:10px;padding:10px 12px;font-size:14px;margin-bottom:10px}
 .err{color:var(--bad);font-weight:700;margin-top:8px}
+.btn.bad{background:var(--bad)}
+.seg.chico>button{font-size:14px;padding:11px 2px}
+.sem{text-align:center;padding:26px 14px}
+.sem .luz{width:120px;height:120px;border-radius:50%;margin:6px auto 16px;box-shadow:0 0 0 8px #e9edf3}
+.sem.rojo .luz{background:var(--bad)}
+.sem.verde .luz{background:var(--ok)}
+.sem h2{font-size:24px;margin:0 0 8px}
+.sem.rojo h2{color:var(--bad)}
+.sem.verde h2{color:var(--ok)}
+.insp{background:#fdf1f1;border:1px solid #f3c4c4;border-radius:10px;padding:12px;margin-top:12px}
 #toast{position:fixed;left:12px;right:12px;bottom:80px;background:#14213d;color:#fff;padding:13px 14px;border-radius:10px;z-index:9;font-weight:600;text-align:center}
 </style>
 </head>
@@ -84,8 +94,16 @@ const ITEMS = [
   ['refaccion', 'Llanta de refacción'],
   ['neumaticos', 'Condición de neumáticos'],
   ['gps', 'GPS funcionando'],
-  ['antijammer', 'Anti Jammer']
+  ['antijammer', 'Anti Jammer'],
+  ['caja', 'Caja limpia y sin presencia de plaga']
 ];
+// Tipos de carga: [nombre en la hoja, clave, etiqueta del catálogo, aviso si falta]
+const TIPOS = [
+  ['Maquilero', 'maq', 'Maquilero', 'Selecciona el maquilero'],
+  ['Logística interna', 'log', 'Unidad / CEDIS', 'Selecciona la unidad'],
+  ['Desperdicio', 'desp', 'Persona', 'Selecciona la persona']
+];
+const PCT_ROJO_DEF = 20;        // % de cargas en semáforo rojo si la hoja no indica otro
 const FOTO_MAX_LADO = 800;      // px
 const FOTO_MAX_B64 = 110000;    // ~80 KB por foto
 const app = document.getElementById('app');
@@ -101,7 +119,11 @@ function dur(m) { if (m == null || isNaN(m)) return '—'; return m >= 60 ? Math
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 const label = k => (ITEMS.find(i => i[0] === k) || [k, k])[1];
 const fallas = r => ITEMS.map(i => i[0]).filter(k => r.check && r.check[k] === 'FALLA');
-const esLog = t => /^log/i.test(t || '');
+const tipoK = t => /^log/i.test(t || '') ? 'log' : /^desp/i.test(t || '') ? 'desp' : 'maq';
+const tipoDe = t => TIPOS.find(x => x[1] === tipoK(t));
+const tipoN = t => TIPOS.findIndex(x => x[1] === tipoK(t));
+const rojo = r => r.semaforo === 'ROJO';
+const inspPend = r => rojo(r) && !(r.insp && r.insp.revisado === 'SI');
 const nid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const val = id => (document.getElementById(id) || {}).value || '';
 const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -165,6 +187,13 @@ async function api(action, datos, ms) {
 async function cargarCatalogo() {
   const j = await api('catalogo');
   if (j.maquileros) { catalogo = j.maquileros; lsSet('rampa_cat', catalogo); }
+  if (typeof j.pctRojo === 'number') lsSet('rampa_pct', j.pctRojo);
+}
+// Sorteo del semáforo: se hace una sola vez, al iniciar la carga.
+function sortearSemaforo() {
+  const p = lsGet('rampa_pct', PCT_ROJO_DEF);
+  const x = window.crypto && crypto.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296 : Math.random();
+  return x * 100 < p ? 'ROJO' : 'VERDE';
 }
 
 /* ====== Sincronización ====== */
@@ -177,7 +206,7 @@ async function enviar(id) {
   const j = await api('guardar', {registro: Object.assign({}, r, {fotos: nuevas})}, 90000);
   const r2 = await get(id);                      // pudo cambiar mientras se enviaba
   r2.fotos = Object.assign({}, r2.fotos, j.fotos || {});
-  if (r2.fin === r.fin) r2.sync = 'ok';
+  if ((r2.rev || 0) === (r.rev || 0)) r2.sync = 'ok';
   await put(r2);
 }
 async function sync() {
@@ -209,9 +238,14 @@ function ir(v) {
 }
 
 /* ====== Vista: Cargas ====== */
+function semChip(r) {
+  if (r.semaforo === 'VERDE') return '<span class="chip ok">🟢 Semáforo verde</span>';
+  if (!rojo(r)) return '';
+  return inspPend(r) ? '<span class="chip">🔴 Rojo · inspección pendiente</span>' : '<span class="chip gr">🔴 Rojo · inspeccionada</span>';
+}
 function chips(r) {
   const f = fallas(r);
-  return f.length ? f.map(k => '<span class="chip">' + esc(label(k)) + '</span>').join('') : '<span class="chip ok">Checklist OK</span>';
+  return semChip(r) + (f.length ? f.map(k => '<span class="chip">' + esc(label(k)) + '</span>').join('') : '<span class="chip ok">Checklist OK</span>');
 }
 async function vInicio() {
   const rs = await todos();
@@ -257,7 +291,60 @@ function cardActiva(r) {
     '<div>' + esc(r.placas) + ' · ' + esc(r.operador) + '</div>' +
     '<div class="mut">Inicio ' + r.inicio.slice(11) + ' · lleva ' + dur(mins(r.inicio, stamp(new Date()))) + '</div>' +
     '<div>' + chips(r) + '</div>' +
-    '<div id="fin-' + r.id + '" style="margin-top:12px"><button class="btn ok" onclick="pedirFin(\'' + r.id + '\')">Finalizar carga</button></div></div>';
+    '<div id="fin-' + r.id + '" style="margin-top:12px">' + (inspPend(r)
+      ? '<button class="btn bad" onclick="pedirInsp(\'' + r.id + '\')">🔍 Registrar inspección</button>' +
+        '<p class="mut" style="margin:8px 0 0">Semáforo rojo: la unidad debe inspeccionarse antes de finalizar la carga.</p>'
+      : '<button class="btn ok" onclick="pedirFin(\'' + r.id + '\')">Finalizar carga</button>') + '</div></div>';
+}
+/* ====== Inspección (semáforo rojo) ====== */
+let INS = null;
+function pedirInsp(id) {
+  INS = {id: id, revisado: '', fotos: {}};
+  document.getElementById('fin-' + id).innerHTML =
+    '<div class="insp editando"><b>Inspección</b>' +
+    '<label class="f">¿Se revisó la unidad?</label>' +
+    '<div class="seg" id="rv-' + id + '"><button data-v="SI" onclick="setRevisado(\'' + id + '\',\'SI\')">Sí</button><button data-v="NO" onclick="setRevisado(\'' + id + '\',\'NO\')">No</button></div>' +
+    '<div id="rvno-' + id + '" class="err" hidden>Una carga con semáforo rojo tiene que revisarse. No se puede guardar hasta que se revise la unidad.</div>' +
+    '<div id="rvsi-' + id + '" hidden>' +
+      '<label class="f">Comentarios / hallazgos</label><textarea id="hz-' + id + '" rows="3" placeholder="Qué se revisó y qué se encontró"></textarea>' +
+      '<div class="item" id="it-inspeccion" style="border:0;padding:0"><div class="foto"><label class="btn sec" style="margin-top:10px"><span>📷 Tomar foto (obligatoria)</span>' +
+      '<input type="file" accept="image/*" capture="environment" onchange="foto(\'inspeccion\',this)"></label><img class="thumb" hidden alt=""><div class="mut fz"></div></div></div>' +
+    '</div>' +
+    '<div id="ie-' + id + '" class="err"></div>' +
+    '<div class="seg" style="margin-top:10px"><button onclick="vInicio()">Cancelar</button><button class="okon" id="ig-' + id + '" onclick="guardarInsp(\'' + id + '\',this)">Guardar inspección</button></div></div>';
+}
+function setRevisado(id, v) {
+  INS.revisado = v;
+  [].forEach.call(document.querySelectorAll('#rv-' + id + ' button'), b => {
+    b.className = b.getAttribute('data-v') === v ? (v === 'SI' ? 'okon' : 'badon') : '';
+  });
+  document.getElementById('rvno-' + id).hidden = v !== 'NO';
+  document.getElementById('rvsi-' + id).hidden = v !== 'SI';
+  document.getElementById('ig-' + id).disabled = v === 'NO';
+  document.getElementById('ie-' + id).textContent = '';
+}
+async function guardarInsp(id, btn) {
+  const err = document.getElementById('ie-' + id);
+  const hz = val('hz-' + id).trim();
+  const errs = [];
+  if (INS.revisado !== 'SI') errs.push(INS.revisado === 'NO' ? 'No se puede guardar: la unidad no se ha revisado.' : 'Indica si se revisó la unidad.');
+  else {
+    if (!hz) errs.push('Escribe los comentarios o hallazgos.');
+    if (!INS.fotos.inspeccion) errs.push('Falta la foto de la inspección.');
+  }
+  if (errs.length) { err.innerHTML = errs.map(esc).join('<br>'); return; }
+  btn.disabled = true;
+  const r = await get(id);
+  r.insp = {revisado: 'SI', hallazgos: hz, hora: stamp(new Date())};
+  r.fotos = Object.assign({}, r.fotos, {inspeccion: INS.fotos.inspeccion});
+  r.rev = (r.rev || 0) + 1;
+  r.sync = 'pendiente';
+  await put(r);
+  await encolar(id);
+  INS = null;
+  toast('Inspección guardada. Ya puedes finalizar la carga.');
+  vInicio();
+  sync();
 }
 function cardTerm(r) {
   return '<div class="card"><div class="row"><b>' + esc(r.maquilero) + '</b><span class="mut">' + (r.sync === 'pendiente' ? '⏳ por enviar' : '') + '</span></div>' +
@@ -266,7 +353,7 @@ function cardTerm(r) {
 }
 function pedirFin(id) {
   document.getElementById('fin-' + id).innerHTML =
-    '<label class="f">Hora de finalización</label><input type="time" id="hf-' + id + '" value="' + hm(new Date()) + '">' +
+    '<div class="editando"></div><label class="f">Hora de finalización</label><input type="time" id="hf-' + id + '" value="' + hm(new Date()) + '">' +
     '<div id="fe-' + id + '" class="err"></div>' +
     '<div class="seg" style="margin-top:10px"><button onclick="vInicio()">Cancelar</button><button class="okon" onclick="finalizar(\'' + id + '\')">Confirmar</button></div>';
 }
@@ -274,9 +361,11 @@ async function finalizar(id) {
   const r = await get(id);
   const t = val('hf-' + id);
   if (!t) return;
+  if (inspPend(r)) { vInicio(); return; }   // semáforo rojo sin inspección: no se puede finalizar
   const fin = ymd(new Date()) + ' ' + t;
   if (fin < r.inicio) { document.getElementById('fe-' + id).textContent = 'La hora de fin es anterior al inicio (' + r.inicio.slice(11) + ').'; return; }
   r.fin = fin;
+  r.rev = (r.rev || 0) + 1;
   r.sync = cfg.url ? 'pendiente' : 'demo';
   await put(r);
   await encolar(id);
@@ -293,8 +382,8 @@ function vNueva() {
   const ahora = new Date();
   app.innerHTML =
     '<div class="card"><h2>Nueva carga</h2>' +
-    '<label class="f">Tipo</label><div class="seg" id="tipo">' +
-      ['Maquilero', 'Logística interna'].map(t => '<button data-t="' + t + '" class="' + (t === F.tipo ? 'on' : '') + '" onclick="setTipo(this)">' + t + '</button>').join('') + '</div>' +
+    '<label class="f">Tipo</label><div class="seg chico" id="tipo">' +
+      TIPOS.map(t => '<button data-t="' + t[0] + '" class="' + (t[0] === F.tipo ? 'on' : '') + '" onclick="setTipo(this)">' + t[0] + '</button>').join('') + '</div>' +
     '<label class="f" id="lmaq">Maquilero</label><select id="maq" onchange="llenarSug()"></select>' +
     '<label class="f">Placas</label><input id="placas" autocomplete="off" autocapitalize="characters" list="dl-placas" placeholder="Ej. ABC-123-D" oninput="autoOp()"><datalist id="dl-placas"></datalist>' +
     '<label class="f">Nombre del operador</label><input id="operador" autocomplete="off" autocapitalize="words" list="dl-op" placeholder="Nombre completo"><datalist id="dl-op"></datalist>' +
@@ -321,11 +410,11 @@ function itemHtml(i) {
 function setTipo(b) {
   F.tipo = b.getAttribute('data-t');
   [].forEach.call(document.querySelectorAll('#tipo button'), x => { x.className = x === b ? 'on' : ''; });
-  document.getElementById('lmaq').textContent = esLog(F.tipo) ? 'Unidad / CEDIS' : 'Maquilero';
+  document.getElementById('lmaq').textContent = tipoDe(F.tipo)[2];
   llenarMaq();
 }
 function llenarMaq() {
-  const ops = catalogo.filter(m => esLog(m.tipo) === esLog(F.tipo));
+  const ops = catalogo.filter(m => tipoK(m.tipo) === tipoK(F.tipo));
   document.getElementById('maq').innerHTML = '<option value="">Selecciona…</option>' + ops.map(m => '<option>' + esc(m.nombre) + '</option>').join('');
   llenarSug();
 }
@@ -359,8 +448,10 @@ async function foto(k, input) {
   const span = it.querySelector('label span');
   span.textContent = 'Procesando foto…';
   try {
-    const d = await comprimir(file, stamp(new Date()) + '  ' + (val('placas').toUpperCase() || '') + '  ' + label(k));
-    F.fotos[k] = d;
+    const ins = k === 'inspeccion';
+    const placas = ins ? ((await get(INS.id)) || {}).placas : val('placas').toUpperCase();
+    const d = await comprimir(file, stamp(new Date()) + '  ' + (placas || '') + '  ' + (ins ? 'Inspección' : label(k)));
+    (ins ? INS : F).fotos[k] = d;
     const img = it.querySelector('img');
     img.src = d; img.hidden = false;
     it.querySelector('.fz').textContent = 'Foto lista · ' + Math.round(d.length * 0.75 / 1024) + ' KB';
@@ -398,7 +489,7 @@ async function guardar(btn) {
   const errs = [];
   const maq = val('maq'), placas = val('placas').trim().toUpperCase(), op = val('operador').trim();
   const fecha = val('fecha'), hini = val('hini');
-  if (!maq) errs.push(esLog(F.tipo) ? 'Selecciona la unidad' : 'Selecciona el maquilero');
+  if (!maq) errs.push(tipoDe(F.tipo)[3]);
   if (!placas) errs.push('Escribe las placas');
   if (!op) errs.push('Escribe el nombre del operador');
   if (!fecha || !hini) errs.push('Indica fecha y hora de inicio');
@@ -417,13 +508,26 @@ async function guardar(btn) {
   const r = {
     id: nid(), fecha: fecha, tipo: F.tipo, maquilero: maq, placas: placas, operador: op,
     inicio: fecha + ' ' + hini, fin: '', check: Object.assign({}, F.check), fotos: fotos, notas: notas,
-    obs: val('obs').trim(), capturo: cfg.capturo || '', sync: cfg.url ? 'pendiente' : 'demo'
+    obs: val('obs').trim(), capturo: cfg.capturo || '', sync: cfg.url ? 'pendiente' : 'demo',
+    semaforo: sortearSemaforo(), insp: null, rev: 0
   };
   await put(r);
   await encolar(r.id);
-  toast('Carga iniciada: ' + maq);
-  ir('inicio');
+  F = null;
+  vSemaforo(r);
   sync();
+}
+// Resultado del sorteo, a pantalla completa para que nadie lo pase por alto.
+function vSemaforo(r) {
+  vista = 'semaforo';
+  window.scrollTo(0, 0);
+  const R0 = rojo(r);
+  app.innerHTML = '<div class="card sem ' + (R0 ? 'rojo' : 'verde') + '"><div class="luz"></div>' +
+    '<h2>Semáforo ' + (R0 ? 'ROJO' : 'VERDE') + '</h2>' +
+    '<p><b>' + esc(r.maquilero) + '</b> · ' + esc(r.placas) + '</p>' +
+    '<p>' + (R0 ? 'Esta carga <b>debe pasar a inspección</b>. No se podrá finalizar hasta registrar la revisión con comentarios y foto.'
+                : 'Esta carga <b>no requiere inspección</b>.') + '</p>' +
+    '<button class="btn' + (R0 ? ' bad' : ' ok') + '" style="margin-top:14px" onclick="ir(\'inicio\')">Entendido</button></div>';
 }
 
 /* ====== Vista: Resumen ====== */
@@ -483,13 +587,16 @@ async function vResumen() {
 }
 function abrir(nombre) { R.abierto = R.abierto === nombre ? null : nombre; pintarResumen(); }
 function pintarResumen() {
-  const fil = R.regs.filter(r => R.filtro === 'todos' || (R.filtro === 'log') === esLog(r.tipo));
-  const tot = {c: 0, cf: 0, f: 0, min: 0, nm: 0, act: 0}, items = {}, by = {};
+  const fil = R.regs.filter(r => R.filtro === 'todos' || R.filtro === tipoK(r.tipo));
+  const tot = {c: 0, cf: 0, f: 0, min: 0, nm: 0, act: 0, roj: 0, pend: 0}, items = {}, by = {};
   ITEMS.forEach(i => { items[i[0]] = 0; });
   fil.forEach(r => {
     const f = fallas(r);
-    const m = by[r.maquilero] || (by[r.maquilero] = {n: r.maquilero, tipo: r.tipo, c: 0, cf: 0, f: 0, min: 0, nm: 0, items: {}, regs: []});
-    [tot, m].forEach(o => { o.c++; if (f.length) o.cf++; o.f += f.length; if (r.fin) { o.min += mins(r.inicio, r.fin); o.nm++; } });
+    const m = by[r.maquilero] || (by[r.maquilero] = {n: r.maquilero, tipo: r.tipo, c: 0, cf: 0, f: 0, min: 0, nm: 0, roj: 0, pend: 0, items: {}, regs: []});
+    [tot, m].forEach(o => {
+      o.c++; if (f.length) o.cf++; o.f += f.length; if (r.fin) { o.min += mins(r.inicio, r.fin); o.nm++; }
+      if (rojo(r)) { o.roj++; if (inspPend(r)) o.pend++; }
+    });
     if (!r.fin) tot.act++;
     f.forEach(k => { items[k]++; m.items[k] = (m.items[k] || 0) + 1; });
     m.regs.push(r);
@@ -498,24 +605,27 @@ function pintarResumen() {
   const maxI = Math.max.apply(null, [1].concat(ITEMS.map(i => items[i[0]])));
   const pct = tot.c ? Math.round(tot.cf * 100 / tot.c) : 0;
   let h = (R.aviso ? '<div class="aviso">' + esc(R.aviso) + '</div>' : '') +
-    '<div class="seg">' + [['todos', 'Todos'], ['maq', 'Maquileros'], ['log', 'Logística']].map(p =>
+    '<div class="seg chico">' + [['todos', 'Todos'], ['maq', 'Maquileros'], ['log', 'Logística'], ['desp', 'Desperdicio']].map(p =>
       '<button class="' + (R.filtro === p[0] ? 'on' : '') + '" onclick="setFiltro(\'' + p[0] + '\')">' + p[1] + '</button>').join('') + '</div>' +
     '<div class="kpis">' +
       '<div class="kpi"><span>Cargas</span><b>' + tot.c + '</b><div class="mut">' + (tot.act ? tot.act + ' en curso' : '&nbsp;') + '</div></div>' +
       '<div class="kpi' + (tot.cf ? ' bad' : '') + '"><span>Unidades con falla</span><b>' + tot.cf + '</b><div class="mut">' + pct + '% de las cargas</div></div>' +
       '<div class="kpi' + (tot.f ? ' bad' : '') + '"><span>Fallas detectadas</span><b>' + tot.f + '</b><div class="mut">elementos del checklist</div></div>' +
       '<div class="kpi"><span>Tiempo prom. carga</span><b style="font-size:22px">' + (tot.nm ? dur(Math.round(tot.min / tot.nm)) : '—') + '</b><div class="mut">' + tot.nm + ' terminadas</div></div>' +
+      '<div class="kpi' + (tot.roj ? ' bad' : '') + '"><span>Semáforo rojo</span><b>' + tot.roj + '</b><div class="mut">cargas a inspección</div></div>' +
+      '<div class="kpi' + (tot.pend ? ' bad' : '') + '"><span>Inspecciones</span><b>' + (tot.roj - tot.pend) + ' / ' + tot.roj + '</b><div class="mut">' + (tot.pend ? tot.pend + ' pendiente' + (tot.pend === 1 ? '' : 's') : 'hechas') + '</div></div>' +
     '</div>';
   if (!tot.c) return void (document.getElementById('res').innerHTML = h + '<p class="mut">No hay cargas en este periodo.</p>');
   h += '<div class="card"><h2>Fallas por elemento</h2>' + ITEMS.map(i =>
     '<div class="row"><span>' + esc(i[1]) + '</span><b' + (items[i[0]] ? ' style="color:var(--bad)"' : '') + '>' + items[i[0]] + '</b></div>' +
     '<div class="bar"><i style="width:' + Math.round(items[i[0]] * 100 / maxI) + '%"></i></div>').join('') + '</div>';
-  h += '<h3>Por maquilero / unidad (' + lista.length + ')</h3>' + lista.map(m => {
+  h += '<h3>Por maquilero / unidad / persona (' + lista.length + ')</h3>' + lista.map(m => {
     const its = Object.keys(m.items).map(k => '<span class="chip">' + esc(label(k)) + (m.items[k] > 1 ? ' ×' + m.items[k] : '') + '</span>').join('');
     const open = R.abierto === m.n;
     return '<div class="card maq" onclick="abrir(this.getAttribute(\'data-n\'))" data-n="' + esc(m.n) + '">' +
       '<div class="row"><b>' + esc(m.n) + '</b><span class="mut">' + (open ? '▲' : '▼') + '</span></div>' +
-      '<div class="mut">' + m.c + ' carga' + (m.c === 1 ? '' : 's') + ' · ' + m.cf + ' con falla · prom. ' + (m.nm ? dur(Math.round(m.min / m.nm)) : '—') + '</div>' +
+      '<div class="mut">' + m.c + ' carga' + (m.c === 1 ? '' : 's') + ' · ' + m.cf + ' con falla · prom. ' + (m.nm ? dur(Math.round(m.min / m.nm)) : '—') +
+        (m.roj ? ' · 🔴 ' + m.roj + ' a inspección' + (m.pend ? ' (' + m.pend + ' pendiente' + (m.pend === 1 ? '' : 's') + ')' : '') : '') + '</div>' +
       '<div>' + (its || '<span class="chip ok">Sin fallas</span>') + '</div>' +
       (open ? '<div class="det" onclick="event.stopPropagation()">' + m.regs.sort((a, b) => a.inicio < b.inicio ? 1 : -1).map(detalle).join('') + '</div>' : '') +
       '</div>';
@@ -531,9 +641,15 @@ function detalle(r) {
     return '<a href="' + esc(u) + '" target="_blank" rel="noopener">Foto: ' + esc(label(k)) + ' ↗</a> ';
   }).join('');
   const notas = f.filter(k => (r.notas || {})[k]).map(k => esc(label(k)) + ': ' + esc(r.notas[k])).join(' · ');
+  const fi = (r.fotos || {}).inspeccion;
+  const insp = rojo(r) && r.insp && r.insp.revisado === 'SI'
+    ? '<div class="mut"><b>Inspección:</b> ' + esc(r.insp.hallazgos) + '</div>' +
+      (fi ? (String(fi).indexOf('data:') === 0 ? '<img class="thumb" src="' + fi + '" alt="Foto de inspección">'
+                                               : '<a href="' + esc(fi) + '" target="_blank" rel="noopener">Foto: inspección ↗</a>') : '')
+    : '';
   return '<div><b>' + dm(r.inicio) + ' · ' + r.inicio.slice(11) + ' – ' + (r.fin ? r.fin.slice(11) + ' (' + dur(mins(r.inicio, r.fin)) + ')' : 'en carga') + '</b>' +
     '<div>' + esc(r.placas) + ' · ' + esc(r.operador) + '</div><div>' + chips(r) + '</div>' +
-    (notas ? '<div class="mut">' + notas + '</div>' : '') + (fotos ? '<div>' + fotos + '</div>' : '') +
+    (notas ? '<div class="mut">' + notas + '</div>' : '') + (fotos ? '<div>' + fotos + '</div>' : '') + insp +
     (r.obs ? '<div class="mut">Obs.: ' + esc(r.obs) + '</div>' : '') + '</div>';
 }
 
@@ -614,7 +730,7 @@ async function leerEnlace() {
 
 /* ====== Catálogo de maquileros (editable desde Ajustes) ====== */
 let CAT = null, E = null;   // lista completa (con inactivos) y el elemento en edición
-const ordenar = l => l.sort((a, b) => (b.activo !== false) - (a.activo !== false) || esLog(a.tipo) - esLog(b.tipo) || a.nombre.localeCompare(b.nombre));
+const ordenar = l => l.sort((a, b) => (b.activo !== false) - (a.activo !== false) || tipoN(a.tipo) - tipoN(b.tipo) || a.nombre.localeCompare(b.nombre));
 async function cargarCatEdit() {
   CAT = ordenar((await api('catalogo', {todos: true})).maquileros);
 }
@@ -622,9 +738,10 @@ function selSeg(b) { [].forEach.call(b.parentNode.children, x => { x.className =
 function pintarCat(msg) {
   const el = document.getElementById('catcard');
   if (!el) return;
-  if (!CAT) { el.innerHTML = '<h2>Maquileros y unidades</h2><p class="mut">' + esc(msg || 'Cargando…') + '</p>'; return; }
-  el.innerHTML = '<div class="row"><h2>Maquileros y unidades</h2><span class="mut">' + CAT.filter(m => m.activo !== false).length + ' activos</span></div>' +
-    '<button class="btn sec" onclick="editMaq(-1)">+ Agregar maquilero o unidad</button><div id="maqform-1"></div>' +
+  if (!CAT) { el.innerHTML = '<h2>Catálogo</h2><p class="mut">' + esc(msg || 'Cargando…') + '</p>'; return; }
+  el.innerHTML = '<div class="row"><h2>Catálogo</h2><span class="mut">' + CAT.filter(m => m.activo !== false).length + ' activos</span></div>' +
+    '<p class="mut" style="margin-top:0">Maquileros, unidades de logística y personas de desperdicio.</p>' +
+    '<button class="btn sec" onclick="editMaq(-1)">+ Agregar</button><div id="maqform-1"></div>' +
     CAT.map((m, i) => '<div style="border-top:1px solid var(--line);padding:10px 0;margin-top:' + (i ? 0 : 10) + 'px">' +
       '<div class="row" style="align-items:center"><div' + (m.activo === false ? ' style="color:var(--mut)"' : '') + '><b>' + esc(m.nombre) + '</b><br>' +
       '<span class="mut">' + esc(m.tipo) + (m.activo === false ? ' · <b>inactivo</b>' : '') + '</span></div>' +
@@ -639,7 +756,7 @@ function editMaq(i) {
   document.getElementById('maqform' + i).innerHTML =
     '<div style="background:#f6f8fb;border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:10px">' +
     '<label class="f" style="margin-top:0">Nombre</label><input id="mn" value="' + esc(m.nombre) + '" maxlength="80" autocapitalize="words">' +
-    '<label class="f">Tipo</label>' + seg([['Maquilero', 'Maquilero'], ['Logística interna', 'Logística interna']], esLog(m.tipo) ? 'Logística interna' : 'Maquilero', 'E.tipo=selSeg(this)') +
+    '<label class="f">Tipo</label>' + seg(TIPOS.map(t => [t[0], t[0]]), tipoDe(m.tipo)[0], 'E.tipo=selSeg(this)').replace('class="seg"', 'class="seg chico"') +
     (i >= 0 ? '<label class="f">Estado</label>' + seg([['si', 'Activo'], ['no', 'Inactivo']], E.activo ? 'si' : 'no', 'E.activo=selSeg(this)===\'si\'') +
       '<p class="mut">Inactivo: deja de aparecer al registrar cargas, pero su historial se conserva. Si cambias el nombre, las cargas anteriores siguen con el nombre anterior.</p>' : '') +
     '<div id="me" class="err"></div>' +
@@ -675,7 +792,7 @@ window.addEventListener('online', sync);
 window.addEventListener('offline', pill);
 window.addEventListener('hashchange', () => { leerEnlace().then(ok => { if (ok) { toast('Celular conectado ✓'); sync(); } ir('inicio'); }); });
 setInterval(sync, 60000);
-setInterval(() => { if (vista === 'inicio' && cfg.url && cfg.capturo && !document.querySelector('[id^="hf-"]')) vInicio(); }, 60000);
+setInterval(() => { if (vista === 'inicio' && cfg.url && cfg.capturo && !document.querySelector('#app .editando')) vInicio(); }, 60000);
 leerEnlace().then(ok => {
   if (ok) toast('Celular conectado ✓');
   return limpiar().catch(() => {});

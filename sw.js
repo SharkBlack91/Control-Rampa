@@ -1,6 +1,6 @@
 // Service worker: guarda la app en el teléfono para que abra al instante y sin señal.
 // Al publicar una versión nueva, cambia el número de VERSION.
-const VERSION = 'rampa-v3';
+const VERSION = 'rampa-v4';
 const ARCHIVOS = ['./', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
